@@ -559,3 +559,27 @@ def get_point_normals(poly):
     pt_norm = poly.GetPointData().GetArray("Normals")
     return vtk_to_numpy(pt_norm)
 
+def thresholdPolyData(poly, attr, threshold, mode):
+    """
+    Get the polydata after thresholding based on the input attribute
+    Args:
+        poly: vtk PolyData to apply threshold
+        atrr: attribute of the cell array
+        threshold: (min, max)
+    Returns:
+        output: resulted vtk PolyData
+    """
+    surface_thresh = vtk.vtkThreshold()
+    surface_thresh.SetInputData(poly)
+    surface_thresh.ThresholdBetween(*threshold)
+    if mode=='cell':
+        surface_thresh.SetInputArrayToProcess(0, 0, 0,
+            vtk.vtkDataObject.FIELD_ASSOCIATION_CELLS, attr)
+    else:
+        surface_thresh.SetInputArrayToProcess(0, 0, 0,
+            vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, attr)
+    surface_thresh.Update()
+    surf_filter = vtk.vtkDataSetSurfaceFilter()
+    surf_filter.SetInputData(surface_thresh.GetOutput())
+    surf_filter.Update()
+    return surf_filter.GetOutput()
