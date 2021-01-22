@@ -1,7 +1,87 @@
 import os
+import sys
 import numpy as np
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
+
+def geodesic_distance_map(poly, start, threshold, max_depth=3000):
+    '''
+    compute the geodesic distance map on a polydata from a starting point
+    '''
+    count = 0
+    dist_arr = np.ones(poly.GetNumberOfPoints())*np.inf
+    vtk_math = vtk.vtkMath()
+    points = poly.GetPoints()
+
+    pt_queue = [start]
+    dist_queue = [0.]
+    visited_list = [start]
+    while pt_queue and count < max_depth:
+        count+=1
+        print("debug: ", pt_queue)
+        node = pt_queue.pop(0)
+        dist = dist_queue.pop(0)
+        dist_arr[node] = dist
+
+        tmplt_list = vtk.vtkIdList()
+        poly.GetPointCells(node, tmplt_list)
+        for i in range(tmplt_list.GetNumberOfIds()):
+            tmplt_pt_list = vtk.vtkIdList()
+            poly.GetCellPoints(tmplt_list.GetId(i), tmplt_pt_list)
+            for j in range(tmplt_pt_list.GetNumberOfIds()):
+                p_id = tmplt_pt_list.GetId(j)
+                if not p_id in visited_list:
+                    visited_list.append(p_id)
+                    cum_dist = np.linalg.norm(np.array(points.GetPoint(node))-np.array(points.GetPoint(p_id))) + dist
+                    print("dist: ", cum_dist)
+                    if cum_dist < threshold:
+                        pt_queue.append(p_id)
+                        dist_queue.append(cum_dist)
+    print("count: ", count)
+    return dist_arr
+
+def find_point_correspondence(mesh,points):
+    """
+    Find the point IDs of the points on a VTK PolyData
+    Args:
+        mesh: the PolyData to find IDs on
+        points: vtk Points
+    
+    Returns
+        IdList: list containing the IDs
+    TO-DO: optimization move vtkKdTreePointLocator out of the loop, why
+    is it inside now?
+    """
+    IdList = [None]*points.GetNumberOfPoints()
+    for i in range(len(IdList)):
+        newPt = points.GetPoint(i)
+        locator = vtk.vtkKdTreePointLocator()
+        locator.SetDataSet(mesh)
+        locator.BuildLocator()
+        IdList[i] = locator.FindClosestPoint(newPt)
+    return IdList
+def geodesic_distance(poly, start, end):
+    '''
+    The mesh must be a manifold
+    '''
+    d_graph = vtk.vtkDijkstraGraphGeodesicPath()
+    d_graph.SetInputData(poly)
+    d_graph.SetStartVertex(start)
+    d_graph.SetEndVertex(end)
+    d_graph.Update()
+
+    id_list = d_graph.GetIdList()
+    if id_list.GetNumberOfIds() == 0:
+        return float("inf")
+    distance = 0.
+    points = poly.GetPoints()
+    for i in range(id_list.GetNumberOfIds()-1):
+        i_curr = id_list.GetId(i)
+        i_next = id_list.GetId(i+1)
+        dist = vtk.vtkMath()
+        distance += dist.Distance2BetweenPoints(points.GetPoint(i_curr), points.GetPoint(i_next))
+    return distance
+        
 def decimation(poly, rate):
     """
     Simplifies a VTK PolyData
@@ -12,6 +92,7 @@ def decimation(poly, rate):
     decimate = vtk.vtkQuadricDecimation()
     decimate.SetInputData(poly)
     decimate.AttributeErrorMetricOn()
+    decimate.ScalarsAttributeOn()
     decimate.SetTargetReduction(rate)
     decimate.VolumePreservationOn()
     decimate.Update()
@@ -140,6 +221,11 @@ def load_vtk_image(fn):
         reader.SetFileName(fn)
         reader.Update()
         label = reader.GetOutput()
+    elif ext=='vtk':
+        reader = vtk.vtkStructuredPointsReader()
+        reader.SetFileName(fn)
+        reader.Update()
+        label = reader.GetOutput()
     elif ext=='nii' or ext=='nii.gz':
         reader = vtk.vtkNIFTIImageReader()
         reader.SetFileName(fn)
@@ -253,6 +339,8 @@ def write_vtk_image(vtkIm, fn, M=None):
     _, extension = os.path.splitext(fn)
     if extension == '.vti':
         writer = vtk.vtkXMLImageDataWriter()
+    elif extension =='.vtk':
+        writer = vtk.vtkStructuredPointsWriter()
     elif extension == '.mhd':
         writer = vtk.vtkMetaImageWriter()
     else:
