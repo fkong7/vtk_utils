@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import vtk
-from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
+from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk, get_vtk_array_type
 def decimation(poly, rate):
     """
     Simplifies a VTK PolyData
@@ -480,6 +480,12 @@ def write_numpy_points(pts, fn):
     write_polydata_points(poly, fn)
     return 
 
+
+def build_transform_matrix(image):
+    matrix = np.eye(4)
+    matrix[:-1,:-1] = np.matmul(np.reshape(image.GetDirection(), (3,3)), np.diag(image.GetSpacing()))
+    matrix[:-1,-1] = np.array(image.GetOrigin())
+    return matrix 
 
 def surface_to_image(mesh, image):
     """
