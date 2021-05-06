@@ -2,7 +2,51 @@ import os
 import sys
 import numpy as np
 import vtk
-from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
+from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk, get_vtk_array_type
+
+def build_transform_matrix(image):
+    import SimpleITK as sitk
+    matrix = np.eye(4)
+    matrix[:-1,:-1] = np.matmul(np.reshape(image.GetDirection(), (3,3)), np.diag(image.GetSpacing()))
+    matrix[:-1,-1] = np.array(image.GetOrigin())
+    return matrix
+
+def bound_polydata_by_image(image, poly, threshold):
+    bound = vtk.vtkBox()
+    image.ComputeBounds()
+    b_bound = image.GetBounds()
+    b_bound = [b+threshold if (i % 2) ==0 else b-threshold for i, b in enumerate(b_bound)]
+    #print("Bounding box: ", b_bound)
+    bound.SetBounds(b_bound)
+    clipper = vtk.vtkClipPolyData()
+    clipper.SetClipFunction(bound)
+    clipper.SetInputData(poly)
+    clipper.InsideOutOn()
+    clipper.Update()
+    return clipper.GetOutput()
+
+def smooth_polydata(poly, iteration=25, boundary=False, feature=False):
+    """
+    This function smooths a vtk polydata
+    Args:
+        poly: vtk polydata to smooth
+        boundary: boundary smooth bool
+    Returns:
+        smoothed: smoothed vtk polydata
+    """
+
+    smoother = vtk.vtkWindowedSincPolyDataFilter()
+    smoother.SetInputData(poly)
+    smoother.SetBoundarySmoothing(boundary)
+    smoother.SetFeatureEdgeSmoothing(feature)
+    smoother.SetNumberOfIterations(iteration)
+    smoother.NonManifoldSmoothingOn()
+    smoother.NormalizeCoordinatesOn()
+    smoother.Update()
+
+    smoothed = smoother.GetOutput()
+
+    return smoothed
 
 def geodesic_distance_map(poly, start, threshold, max_depth=3000):
     '''
@@ -96,7 +140,19 @@ def decimation(poly, rate):
     decimate.SetTargetReduction(rate)
     decimate.VolumePreservationOn()
     decimate.Update()
-    return decimate.GetOutput()
+    output = decimate.GetOutput()
+    output = cleanPolyData(output, 0.)
+    return output
+
+def get_all_connected_polydata(poly):
+    connectivity = vtk.vtkPolyDataConnectivityFilter()
+    connectivity.SetInputData(poly)
+    connectivity.SetExtractionModeToAllRegions()
+    connectivity.ColorRegionsOn()
+    #connectivity.MarkVisitedPointIdsOn()
+    connectivity.Update()
+    poly = connectivity.GetOutput()
+    return poly
 
 def get_largest_connected_polydata(poly):
     connectivity = vtk.vtkPolyDataConnectivityFilter()
@@ -214,7 +270,8 @@ def load_vtk_image(fn):
     Return:
         label: label map as a vtk image
     """
-    _, ext = fn.split(os.extsep, 1)
+    name_list = fn.split(os.extsep)   
+    ext = name_list[-1]
 
     if ext=='vti':
         reader = vtk.vtkXMLImageDataReader()
@@ -226,7 +283,7 @@ def load_vtk_image(fn):
         reader.SetFileName(fn)
         reader.Update()
         label = reader.GetOutput()
-    elif ext=='nii' or ext=='nii.gz':
+    elif ext=='nii' or '.'.join([name_list[-2], ext])=='nii.gz':
         reader = vtk.vtkNIFTIImageReader()
         reader.SetFileName(fn)
         reader.Update()
@@ -383,6 +440,10 @@ def cleanPolyData(poly, tol):
     clean.PointMergingOn()
     clean.Update()
 
+    #clean_poly = vtk.vtkRemoveDuplicatePolys()
+    #clean_poly.SetInputData(clean.GetOutput())
+    #clean_poly.Update()
+    #poly = clean_poly.GetOutput()
     poly = clean.GetOutput()
     return poly
 
@@ -494,7 +555,7 @@ def load_image_to_nifty(fn):
         label: label map as a vtk image
     """
     import SimpleITK as sitk
-    _, ext = fn.split(os.extsep, 1)
+    ext = fn.split(os.extsep)[-1]
     if ext=='vti':
         reader = vtk.vtkXMLImageDataReader()
         reader.SetFileName(fn)
@@ -543,6 +604,8 @@ def write_vtk_polydata(poly, fn):
 
     if extension == '.vtk':
         writer = vtk.vtkPolyDataWriter()
+    elif extension == '.stl':
+        writer = vtk.vtkSTLWriter()
     elif extension == '.vtp':
         writer = vtk.vtkXMLPolyDataWriter()
     else:
