@@ -632,6 +632,12 @@ def write_numpy_points(pts, fn):
     return 
 
 
+def build_transform_matrix(image):
+    matrix = np.eye(4)
+    matrix[:-1,:-1] = np.matmul(np.reshape(image.GetDirection(), (3,3)), np.diag(image.GetSpacing()))
+    matrix[:-1,-1] = np.array(image.GetOrigin())
+    return matrix 
+
 def surface_to_image(mesh, image):
     """
     Find the corresponding pixel of the mesh vertices,
