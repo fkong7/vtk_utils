@@ -4,6 +4,23 @@ import numpy as np
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk, get_vtk_array_type
 
+def fill_hole(poly, size=10000000.):
+    """
+    Fill holes in VTK PolyData
+
+    Args:
+        poly: VTK PolyData to fill
+        size: max size of the hole to fill
+    Returns:
+        poly: filled VTK PolyData
+    """
+    filler = vtk.vtkFillHolesFilter()
+    filler.SetInputData(poly)
+    filler.SetHoleSize(size)
+    filler.Update()
+
+    return filler.GetOutput()
+
 def build_transform_matrix(image):
     import SimpleITK as sitk
     matrix = np.eye(4)
@@ -532,6 +549,9 @@ def load_vtk_mesh(fileName):
     elif (fn_ext == '.stl'):
         print('Reading stl with name: ', fileName)
         reader = vtk.vtkSTLReader()
+    elif (fn_ext == '.obj'):
+        print('Reading obj with name: ', fileName)
+        reader = vtk.vtkOBJReader()
     elif (fn_ext == '.vtu'):
         print('Reading vtu with name: ', fileName)
         reader = vtk.vtkXMLUnstructuredGridReader()
@@ -608,6 +628,8 @@ def write_vtk_polydata(poly, fn):
         writer = vtk.vtkSTLWriter()
     elif extension == '.vtp':
         writer = vtk.vtkXMLPolyDataWriter()
+    elif extension == '.obj':
+        writer = vtk.vtkOBJWriter()
     else:
         raise ValueError("Incorrect extension"+extension)
     writer.SetInputData(poly)
