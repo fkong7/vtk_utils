@@ -28,6 +28,19 @@ def build_transform_matrix(image):
     matrix[:-1,-1] = np.array(image.GetOrigin())
     return matrix
 
+def map_polydata_coords(poly, displacement, transform, size):
+    coords = vtk_to_numpy(poly.GetPoints().GetData())
+    coords += displacement
+    coords = np.concatenate((coords,np.ones((coords.shape[0],1))), axis=-1) 
+    coords = np.matmul(np.linalg.inv(transform), coords.transpose()).transpose()[:,:3]
+    coords /= np.array(size)
+    return coords
+
+def transform_polydata(poly, displacement, transform, size):
+    coords = map_polydata_coords(poly, displacement, transform, size)
+    poly.GetPoints().SetData(numpy_to_vtk(coords))
+    return poly
+
 def bound_polydata_by_image(image, poly, threshold):
     bound = vtk.vtkBox()
     image.ComputeBounds()
@@ -110,15 +123,13 @@ def find_point_correspondence(mesh,points):
     
     Returns
         IdList: list containing the IDs
-    TO-DO: optimization move vtkKdTreePointLocator out of the loop, why
-    is it inside now?
     """
     IdList = [None]*points.GetNumberOfPoints()
+    locator = vtk.vtkKdTreePointLocator()
+    locator.SetDataSet(mesh)
+    locator.BuildLocator()
     for i in range(len(IdList)):
         newPt = points.GetPoint(i)
-        locator = vtk.vtkKdTreePointLocator()
-        locator.SetDataSet(mesh)
-        locator.BuildLocator()
         IdList[i] = locator.FindClosestPoint(newPt)
     return IdList
 def geodesic_distance(poly, start, end):
@@ -240,6 +251,23 @@ def convertPolyDataToImageData(poly, ref_im):
     output = stencil.GetOutput()
  
     return output
+
+def multiclass_convert_polydata_to_imagedata(poly, ref_im):
+    poly = get_all_connected_polydata(poly)
+    out_im_py = np.zeros(vtk_to_numpy(ref_im.GetPointData().GetScalars()).shape)
+    c = 0
+    poly_i = thresholdPolyData(poly, 'RegionId', (c, c), 'point')
+    while poly_i.GetNumberOfPoints() > 0:
+        poly_im = convertPolyDataToImageData(poly_i, ref_im)
+        poly_im_py = vtk_to_numpy(poly_im.GetPointData().GetScalars())
+        mask = (poly_im_py==1) & (out_im_py==0) if c==6 else poly_im_py==1
+        out_im_py[mask] = c+1
+        c+=1
+        poly_i = thresholdPolyData(poly, 'RegionId', (c, c), 'point')
+    im = vtk.vtkImageData()
+    im.DeepCopy(ref_im)
+    im.GetPointData().SetScalars(numpy_to_vtk(out_im_py))
+    return im
 
 def exportSitk2VTK(sitkIm,spacing=None):
     """
@@ -762,3 +790,48 @@ def thresholdPolyData(poly, attr, threshold, mode):
     surf_filter.SetInputData(surface_thresh.GetOutput())
     surf_filter.Update()
     return surf_filter.GetOutput()
+
+def eraseBoundary(labels, pixels, bg_id):
+    """
+    Erase anything on the boundary by a specified number of pixels
+    Args:
+        labels: python nd array
+        pixels: number of pixel width to erase
+        bg_id: id number of background class
+    Returns:
+        labels: editted label maps
+    """
+    x,y,z = labels.shape
+    labels[:pixels,:,:] = bg_id
+    labels[-pixels:,:,:] = bg_id
+    labels[:,:pixels,:] = bg_id
+    labels[:,-pixels:,:] = bg_id
+    labels[:,:,:pixels] = bg_id
+    labels[:,:,-pixels:] = bg_id
+    return labels
+
+def convert_to_surfs(seg, new_spacing=[1.,1.,1.], target_node_num=2048, bound=False):
+    import SimpleITK as sitk
+    py_seg = sitk.GetArrayFromImage(seg)
+    py_seg = eraseBoundary(py_seg, 1, 0)
+    labels = np.unique(py_seg)
+    for i, l in enumerate(labels):
+        py_seg[py_seg==l] = i
+    seg2 = sitk.GetImageFromArray(py_seg)
+    seg2.CopyInformation(seg)
+
+    seg_vtk,_ = exportSitk2VTK(seg2)
+    seg_vtk = vtkImageResample(seg_vtk,new_spacing,'NN')
+    poly_l = []
+    for i, _ in enumerate(labels):
+        if i==0:
+            continue
+        p = vtk_marching_cube(seg_vtk, 0, i)
+        p = smooth_polydata(p, iteration=50)
+        rate = max(0., 1. - float(target_node_num)/float(p.GetNumberOfPoints()))
+        p = decimation(p, rate)
+        poly_l.append(p)
+    poly = appendPolyData(poly_l)
+    if bound:
+        poly = bound_polydata_by_image(seg_vtk, poly, 1.5)
+    return poly
