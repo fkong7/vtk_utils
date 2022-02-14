@@ -169,7 +169,7 @@ def decimation(poly, rate):
     decimate.VolumePreservationOn()
     decimate.Update()
     output = decimate.GetOutput()
-    output = cleanPolyData(output, 0.)
+    #output = cleanPolyData(output, 0.)
     return output
 
 def get_all_connected_polydata(poly):
@@ -766,6 +766,17 @@ def get_point_normals(poly):
     pt_norm = poly.GetPointData().GetArray("Normals")
     return vtk_to_numpy(pt_norm)
 
+def get_surface_normals(poly):
+    norms = vtk.vtkPolyDataNormals()
+    norms.SetInputData(poly)
+    norms.ComputePointNormalsOn()
+    norms.ComputeCellNormalsOff()
+    norms.ConsistencyOn()
+    norms.SplittingOff()
+    norms.Update()
+    poly = norms.GetOutput()
+    return poly
+
 def thresholdPolyData(poly, attr, threshold, mode):
     """
     Get the polydata after thresholding based on the input attribute
@@ -830,8 +841,43 @@ def convert_to_surfs(seg, new_spacing=[1.,1.,1.], target_node_num=2048, bound=Fa
         p = smooth_polydata(p, iteration=50)
         rate = max(0., 1. - float(target_node_num)/float(p.GetNumberOfPoints()))
         p = decimation(p, rate)
+        arr = np.ones(p.GetNumberOfPoints())*i
+        arr_vtk = numpy_to_vtk(arr)
+        arr_vtk.SetName('RegionId')
+        p.GetPointData().AddArray(arr_vtk)
         poly_l.append(p)
     poly = appendPolyData(poly_l)
     if bound:
         poly = bound_polydata_by_image(seg_vtk, poly, 1.5)
     return poly
+
+def write_vtu(mesh, fn):
+    writer = vtk.vtkXMLUnstructuredGridWriter()
+    writer.SetInputData(mesh)
+    writer.SetFileName(fn)
+    writer.Update()
+    writer.Write()
+    return 
+ 
+def create_cell(elem):
+    tetra = vtk.vtkTetra()
+    ids = tetra.GetPointIds()
+    ids.SetId(0, elem[0])
+    ids.SetId(1, elem[1])
+    ids.SetId(2, elem[2])
+    ids.SetId(3, elem[3])
+    return tetra
+
+def create_vtu_mesh(node, face):
+    mesh = vtk.vtkUnstructuredGrid()
+    vtk_pts = vtk.vtkPoints()
+    vtk_pts.SetData(numpy_to_vtk(node))
+    mesh.SetPoints(vtk_pts)
+    cells = vtk.vtkCellArray()
+    print(node.shape, np.max(face), np.min(face))
+    for i in range(face.shape[0]):
+        tetra = create_cell((face[i, :]).astype(int))
+        cells.InsertNextCell(tetra)
+    mesh.SetCells(vtk.VTK_TETRA, cells)
+    return mesh
+
