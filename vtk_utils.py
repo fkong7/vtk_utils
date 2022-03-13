@@ -166,7 +166,7 @@ def decimation(poly, rate):
     decimate.AttributeErrorMetricOn()
     decimate.ScalarsAttributeOn()
     decimate.SetTargetReduction(rate)
-    decimate.VolumePreservationOn()
+    decimate.VolumePreservationOff()
     decimate.Update()
     output = decimate.GetOutput()
     #output = cleanPolyData(output, 0.)
@@ -773,6 +773,8 @@ def get_surface_normals(poly):
     norms.ComputeCellNormalsOff()
     norms.ConsistencyOn()
     norms.SplittingOff()
+    #norms.FlipNormalsOn()
+    #norms.AutoOrientNormalsOn()
     norms.Update()
     poly = norms.GetOutput()
     return poly
