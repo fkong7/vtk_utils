@@ -3,6 +3,38 @@ import sys
 import numpy as np
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk, get_vtk_array_type
+import pdb
+
+def find_connected_points(cells, mesh, constraint_set):
+    add_cells = []
+    for i in cells:
+        pt_arr = vtk.vtkIdList()
+        mesh.GetCellPoints(i, pt_arr)
+        for k in range(pt_arr.GetNumberOfIds()):
+            p_id = pt_arr.GetId(k)
+            c_arr = vtk.vtkIdList()
+            mesh.GetPointCells(p_id, c_arr)
+            for c in range(c_arr.GetNumberOfIds()):
+                c_id = c_arr.GetId(c)
+                if (c_id not in constraint_set) and (c_id not in add_cells):
+                    add_cells.append(c_id)
+                    constraint_set.append(c_id)
+    return add_cells, constraint_set
+
+def find_connected_points_points(points, mesh, constraint_set):
+    add_points = []
+    for p_id in points:
+        c_arr = vtk.vtkIdList()
+        mesh.GetPointCells(p_id, c_arr)
+        for c in range(c_arr.GetNumberOfIds()):
+            p_arr = vtk.vtkIdList()
+            mesh.GetCellPoints(c_arr.GetId(c), p_arr)
+            for p in range(p_arr.GetNumberOfIds()):
+                p_id_i = p_arr.GetId(p)
+                if (p_id_i not in constraint_set) and (p_id_i not in add_points):
+                    add_points.append(p_id_i)
+                    constraint_set.append(p_id_i)
+    return add_points, constraint_set
 
 def fill_hole(poly, size=10000000.):
     """
@@ -69,6 +101,7 @@ def smooth_polydata(poly, iteration=25, boundary=False, feature=False):
     smoother.SetInputData(poly)
     smoother.SetBoundarySmoothing(boundary)
     smoother.SetFeatureEdgeSmoothing(feature)
+    smoother.SetFeatureAngle(45)
     smoother.SetNumberOfIterations(iteration)
     smoother.NonManifoldSmoothingOn()
     smoother.NormalizeCoordinatesOn()
