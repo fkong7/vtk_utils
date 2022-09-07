@@ -594,7 +594,7 @@ def vtk_marching_cube_multi(vtkLabel, bg_id, smooth=None):
 
     return mesh
 
-def load_vtk_mesh(fileName):
+def load_vtk_mesh(fileName, verbose=False):
     """
     Loads surface/volume mesh to VTK
     """
@@ -602,22 +602,28 @@ def load_vtk_mesh(fileName):
         return 0
     fn_dir, fn_ext = os.path.splitext(fileName)
     if (fn_ext == '.vtk'):
-        print('Reading vtk with name: ', fileName)
+        if verbose:
+            print('Reading vtk with name: ', fileName)
         reader = vtk.vtkPolyDataReader()
     elif (fn_ext == '.vtp'):
-        print('Reading vtp with name: ', fileName)
+        if verbose:
+            print('Reading vtp with name: ', fileName)
         reader = vtk.vtkXMLPolyDataReader()
     elif (fn_ext == '.stl'):
-        print('Reading stl with name: ', fileName)
+        if verbose:
+            print('Reading stl with name: ', fileName)
         reader = vtk.vtkSTLReader()
     elif (fn_ext == '.obj'):
-        print('Reading obj with name: ', fileName)
+        if verbose:
+            print('Reading obj with name: ', fileName)
         reader = vtk.vtkOBJReader()
     elif (fn_ext == '.vtu'):
-        print('Reading vtu with name: ', fileName)
+        if verbose:
+            print('Reading vtu with name: ', fileName)
         reader = vtk.vtkXMLUnstructuredGridReader()
     elif (fn_ext == '.pvtu'):
-        print('Reading pvtu with name: ', fileName)
+        if verbose:
+            print('Reading pvtu with name: ', fileName)
         reader = vtk.vtkXMLPUnstructuredGridReader()
     else:
         print(fn_ext)
