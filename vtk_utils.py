@@ -87,7 +87,7 @@ def bound_polydata_by_image(image, poly, threshold):
     clipper.Update()
     return clipper.GetOutput()
 
-def smooth_polydata(poly, iteration=25, boundary=False, feature=False):
+def smooth_polydata(poly, iteration=25, boundary=False, feature=False, smoothingFactor=0.):
     """
     This function smooths a vtk polydata
     Args:
@@ -96,12 +96,12 @@ def smooth_polydata(poly, iteration=25, boundary=False, feature=False):
     Returns:
         smoothed: smoothed vtk polydata
     """
-
+    import vtk
     smoother = vtk.vtkWindowedSincPolyDataFilter()
     smoother.SetInputData(poly)
+    smoother.SetPassBand(pow(10., -4. * smoothingFactor))
     smoother.SetBoundarySmoothing(boundary)
     smoother.SetFeatureEdgeSmoothing(feature)
-    smoother.SetFeatureAngle(45)
     smoother.SetNumberOfIterations(iteration)
     smoother.NonManifoldSmoothingOn()
     smoother.NormalizeCoordinatesOn()
