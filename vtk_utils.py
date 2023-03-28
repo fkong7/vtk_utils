@@ -568,6 +568,23 @@ def vtk_marching_cube(vtkLabel, bg_id, seg_id, smooth=None):
 
     return mesh
 
+def vtk_marching_cube_continuous(sdf_img, thresh):
+    """
+    Use the VTK marching cube to create isosrufaces 
+    Args:
+        sdf_img: vtkImageData of the sign distance volume
+        thresh: threshold above which to extract mesh
+    Returns:
+        mesh: vtkPolyData of the extracted polygon mesh
+    """
+    contour = vtk.vtkMarchingCubes()
+    contour.SetInputData(sdf_img)
+    contour.SetValue(0, thresh)
+    contour.Update()
+    mesh = contour.GetOutput()
+
+    return mesh
+
 def vtk_marching_cube_multi(vtkLabel, bg_id, smooth=None):
     """
     Use the VTK marching cube to create isosrufaces for all classes excluding the background
