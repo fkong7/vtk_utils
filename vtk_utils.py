@@ -340,7 +340,8 @@ import SimpleITK as sitk
 
     return imageData, vtkmatrix
 
-def load_vtk_image(fn):
+
+def load_vtk_image(fn, mode='linear'):
     """
     This function imports image file as vtk image.
     Args:
@@ -348,16 +349,11 @@ def load_vtk_image(fn):
     Return:
         label: label map as a vtk image
     """
-    name_list = fn.split(os.extsep)   
+    name_list = fn.split(os.extsep)
     ext = name_list[-1]
 
     if ext=='vti':
         reader = vtk.vtkXMLImageDataReader()
-        reader.SetFileName(fn)
-        reader.Update()
-        label = reader.GetOutput()
-    elif ext=='vtk':
-        reader = vtk.vtkStructuredPointsReader()
         reader.SetFileName(fn)
         reader.Update()
         label = reader.GetOutput()
@@ -379,7 +375,10 @@ def load_vtk_image(fn):
         reslice = vtk.vtkImageReslice()
         reslice.SetInputData(image)
         reslice.SetResliceAxes(M)
-        reslice.SetInterpolationModeToLinear()
+        if mode=='linear':
+            reslice.SetInterpolationModeToLinear()
+        else:
+            reslice.SetInterpolationModeToNearestNeighbor()
         reslice.SetOutputSpacing(np.min(image.GetSpacing())*np.ones(3))
         reslice.Update()
         label = reslice.GetOutput()
@@ -389,7 +388,6 @@ def load_vtk_image(fn):
     else:
         raise IOError("File extension is not recognized: ", ext)
     return label
-
 def vtk_write_mask_as_nifty2(mask, image_fn, mask_fn):
     origin = mask.GetOrigin()
     reader = vtk.vtkNIFTIImageReader()
