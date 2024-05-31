@@ -5,6 +5,13 @@ import vtk
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk, get_vtk_array_type
 import pdb
 
+def image_largest_connected(vtkimage):
+    f = vtk.vtkImageConnectivityFilter()
+    f.SetInputData(vtkimage)
+    f.SetExtractionModeToLargestRegion()
+    f.Update()
+    return f.GetOutput()
+
 def find_connected_points(cells, mesh, constraint_set):
     add_cells = []
     for i in cells:
@@ -286,7 +293,8 @@ def convertPolyDataToImageData(poly, ref_im):
     return output
 
 def multiclass_convert_polydata_to_imagedata(poly, ref_im):
-    poly = get_all_connected_polydata(poly)
+    if poly.GetPointData().GetArray('RegionId') is None:
+        poly = get_all_connected_polydata(poly)
     out_im_py = np.zeros(vtk_to_numpy(ref_im.GetPointData().GetScalars()).shape)
     c = 0
     poly_i = thresholdPolyData(poly, 'RegionId', (c, c), 'point')
@@ -676,6 +684,18 @@ def load_image_to_nifty(fn):
     else:
         raise IOError("File extension is not recognized: ", ext)
     return label
+
+def exportVTK2Sitk(label_vtk):
+    import SimpleITK as sitk
+    # assume identity orientation
+    size = label_vtk.GetDimensions()
+    py_arr = np.reshape(vtk_to_numpy(label_vtk.GetPointData().GetScalars()), tuple(size), order='F')
+    label = sitk.GetImageFromArray(py_arr.transpose(2,1,0))
+    label.SetOrigin(label_vtk.GetOrigin())
+    label.SetSpacing(label_vtk.GetSpacing())
+    label.SetDirection(np.eye(3).ravel())
+    return label
+
 
 def exportPython2VTK(img):
     """
