@@ -292,19 +292,21 @@ def convertPolyDataToImageData(poly, ref_im):
  
     return output
 
-def multiclass_convert_polydata_to_imagedata(poly, ref_im):
-    if poly.GetPointData().GetArray('RegionId') is None:
+def multiclass_convert_polydata_to_imagedata(poly, ref_im, thresh_dict={'array': 'RegionId', 'mode': 'point'}, connectivity=True):
+    if connectivity:
         poly = get_all_connected_polydata(poly)
     out_im_py = np.zeros(vtk_to_numpy(ref_im.GetPointData().GetScalars()).shape)
     c = 0
-    poly_i = thresholdPolyData(poly, 'RegionId', (c, c), 'point')
+    poly_i = thresholdPolyData(poly, thresh_dict['array'], (c, c), thresh_dict['mode'])
+    print("DEBUG 0: ", poly_i.GetNumberOfPoints())
     while poly_i.GetNumberOfPoints() > 0:
         poly_im = convertPolyDataToImageData(poly_i, ref_im)
         poly_im_py = vtk_to_numpy(poly_im.GetPointData().GetScalars())
         mask = (poly_im_py==1) & (out_im_py==0) if c==6 else poly_im_py==1
         out_im_py[mask] = c+1
         c+=1
-        poly_i = thresholdPolyData(poly, 'RegionId', (c, c), 'point')
+        poly_i = thresholdPolyData(poly, thresh_dict['array'], (c, c), thresh_dict['mode'])
+        print("DEBUG: ", c, poly_i.GetNumberOfPoints())
     im = vtk.vtkImageData()
     im.DeepCopy(ref_im)
     im.GetPointData().SetScalars(numpy_to_vtk(out_im_py))
@@ -480,6 +482,8 @@ def write_vtk_image(vtkIm, fn, M=None):
     _, extension = os.path.splitext(fn)
     if extension == '.vti':
         writer = vtk.vtkXMLImageDataWriter()
+    elif extension == '.nrrd':
+        writer = vtk.vtkNrrdWriter()
     elif extension =='.vtk':
         writer = vtk.vtkStructuredPointsWriter()
     elif extension == '.mhd':
