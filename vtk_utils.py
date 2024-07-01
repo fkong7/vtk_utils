@@ -865,6 +865,7 @@ def thresholdPolyData(poly, attr, threshold, mode):
     """
     surface_thresh = vtk.vtkThreshold()
     surface_thresh.SetInputData(poly)
+    print(f'threshold: {threshold}, and reference to threshold: {*threshold,}')
     surface_thresh.Between(*threshold)
     if mode=='cell':
         surface_thresh.SetInputArrayToProcess(0, 0, 0,
