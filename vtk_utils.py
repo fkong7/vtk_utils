@@ -876,7 +876,7 @@ def thresholdPolyData(poly, attr, threshold, mode):
         surface_thresh.SetInputArrayToProcess(0, 0, 0,
             vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, attr)
     surface_thresh.Update()
-    surf_filter = vtk.vtkDataSetSurfaceFilter()
+    surf_filter = vtk.vtkGeometryFilter()
     surf_filter.SetInputData(surface_thresh.GetOutput())
     surf_filter.Update()
     return surf_filter.GetOutput()
