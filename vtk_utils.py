@@ -5,6 +5,13 @@ import vtk
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk, get_vtk_array_type
 import pdb
 
+def image_largest_connected(vtkimage):
+    f = vtk.vtkImageConnectivityFilter()
+    f.SetInputData(vtkimage)
+    f.SetExtractionModeToLargestRegion()
+    f.Update()
+    return f.GetOutput()
+
 def find_connected_points(cells, mesh, constraint_set):
     add_cells = []
     for i in cells:
@@ -285,7 +292,7 @@ def convertPolyDataToImageData(poly, ref_im):
  
     return output
 
-def multiclass_convert_polydata_to_imagedata(poly, ref_im, thresh_dict={'array': 'RegionId', 'mode': 'point'}, connectivity=True):
+def multiclass_convert_polydata_to_imagedata(poly, ref_im, thresh_dict={'array': 'RegionId', 'mode': 'point'}, connectivity=True, no_overwrite=[]):
     if connectivity:
         poly = get_all_connected_polydata(poly)
     out_im_py = np.zeros(vtk_to_numpy(ref_im.GetPointData().GetScalars()).shape)
@@ -295,7 +302,7 @@ def multiclass_convert_polydata_to_imagedata(poly, ref_im, thresh_dict={'array':
     while poly_i.GetNumberOfPoints() > 0:
         poly_im = convertPolyDataToImageData(poly_i, ref_im)
         poly_im_py = vtk_to_numpy(poly_im.GetPointData().GetScalars())
-        mask = (poly_im_py==1) & (out_im_py==0) if c==6 else poly_im_py==1
+        mask = (poly_im_py==1) & (out_im_py==0) if c in no_overwrite else poly_im_py==1
         out_im_py[mask] = c+1
         c+=1
         poly_i = thresholdPolyData(poly, thresh_dict['array'], (c, c), thresh_dict['mode'])
@@ -343,7 +350,8 @@ import SimpleITK as sitk
 
     return imageData, vtkmatrix
 
-def load_vtk_image(fn):
+
+def load_vtk_image(fn, mode='linear'):
     """
     This function imports image file as vtk image.
     Args:
@@ -351,16 +359,11 @@ def load_vtk_image(fn):
     Return:
         label: label map as a vtk image
     """
-    name_list = fn.split(os.extsep)   
+    name_list = fn.split(os.extsep)
     ext = name_list[-1]
 
     if ext=='vti':
         reader = vtk.vtkXMLImageDataReader()
-        reader.SetFileName(fn)
-        reader.Update()
-        label = reader.GetOutput()
-    elif ext=='vtk':
-        reader = vtk.vtkStructuredPointsReader()
         reader.SetFileName(fn)
         reader.Update()
         label = reader.GetOutput()
@@ -382,7 +385,10 @@ def load_vtk_image(fn):
         reslice = vtk.vtkImageReslice()
         reslice.SetInputData(image)
         reslice.SetResliceAxes(M)
-        reslice.SetInterpolationModeToLinear()
+        if mode=='linear':
+            reslice.SetInterpolationModeToLinear()
+        else:
+            reslice.SetInterpolationModeToNearestNeighbor()
         reslice.SetOutputSpacing(np.min(image.GetSpacing())*np.ones(3))
         reslice.Update()
         label = reslice.GetOutput()
@@ -392,7 +398,6 @@ def load_vtk_image(fn):
     else:
         raise IOError("File extension is not recognized: ", ext)
     return label
-
 def vtk_write_mask_as_nifty2(mask, image_fn, mask_fn):
     origin = mask.GetOrigin()
     reader = vtk.vtkNIFTIImageReader()
@@ -573,6 +578,23 @@ def vtk_marching_cube(vtkLabel, bg_id, seg_id, smooth=None):
 
     return mesh
 
+def vtk_marching_cube_continuous(sdf_img, thresh):
+    """
+    Use the VTK marching cube to create isosrufaces 
+    Args:
+        sdf_img: vtkImageData of the sign distance volume
+        thresh: threshold above which to extract mesh
+    Returns:
+        mesh: vtkPolyData of the extracted polygon mesh
+    """
+    contour = vtk.vtkMarchingCubes()
+    contour.SetInputData(sdf_img)
+    contour.SetValue(0, thresh)
+    contour.Update()
+    mesh = contour.GetOutput()
+
+    return mesh
+
 def vtk_marching_cube_multi(vtkLabel, bg_id, smooth=None):
     """
     Use the VTK marching cube to create isosrufaces for all classes excluding the background
@@ -599,7 +621,7 @@ def vtk_marching_cube_multi(vtkLabel, bg_id, smooth=None):
 
     return mesh
 
-def load_vtk_mesh(fileName):
+def load_vtk_mesh(fileName, verbose=False):
     """
     Loads surface/volume mesh to VTK
     """
@@ -607,22 +629,28 @@ def load_vtk_mesh(fileName):
         return 0
     fn_dir, fn_ext = os.path.splitext(fileName)
     if (fn_ext == '.vtk'):
-        print('Reading vtk with name: ', fileName)
+        if verbose:
+            print('Reading vtk with name: ', fileName)
         reader = vtk.vtkPolyDataReader()
     elif (fn_ext == '.vtp'):
-        print('Reading vtp with name: ', fileName)
+        if verbose:
+            print('Reading vtp with name: ', fileName)
         reader = vtk.vtkXMLPolyDataReader()
     elif (fn_ext == '.stl'):
-        print('Reading stl with name: ', fileName)
+        if verbose:
+            print('Reading stl with name: ', fileName)
         reader = vtk.vtkSTLReader()
     elif (fn_ext == '.obj'):
-        print('Reading obj with name: ', fileName)
+        if verbose:
+            print('Reading obj with name: ', fileName)
         reader = vtk.vtkOBJReader()
     elif (fn_ext == '.vtu'):
-        print('Reading vtu with name: ', fileName)
+        if verbose:
+            print('Reading vtu with name: ', fileName)
         reader = vtk.vtkXMLUnstructuredGridReader()
     elif (fn_ext == '.pvtu'):
-        print('Reading pvtu with name: ', fileName)
+        if verbose:
+            print('Reading pvtu with name: ', fileName)
         reader = vtk.vtkXMLPUnstructuredGridReader()
     else:
         print(fn_ext)
@@ -658,6 +686,18 @@ def load_image_to_nifty(fn):
     else:
         raise IOError("File extension is not recognized: ", ext)
     return label
+
+def exportVTK2Sitk(label_vtk):
+    import SimpleITK as sitk
+    # assume identity orientation
+    size = label_vtk.GetDimensions()
+    py_arr = np.reshape(vtk_to_numpy(label_vtk.GetPointData().GetScalars()), tuple(size), order='F')
+    label = sitk.GetImageFromArray(py_arr.transpose(2,1,0))
+    label.SetOrigin(label_vtk.GetOrigin())
+    label.SetSpacing(label_vtk.GetSpacing())
+    label.SetDirection(np.eye(3).ravel())
+    return label
+
 
 def exportPython2VTK(img):
     """
