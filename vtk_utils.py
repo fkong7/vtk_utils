@@ -292,7 +292,7 @@ def convertPolyDataToImageData(poly, ref_im):
  
     return output
 
-def multiclass_convert_polydata_to_imagedata(poly, ref_im, thresh_dict={'array': 'RegionId', 'mode': 'point'}, connectivity=True):
+def multiclass_convert_polydata_to_imagedata(poly, ref_im, thresh_dict={'array': 'RegionId', 'mode': 'point'}, connectivity=True, no_overwrite=[]):
     if connectivity:
         poly = get_all_connected_polydata(poly)
     out_im_py = np.zeros(vtk_to_numpy(ref_im.GetPointData().GetScalars()).shape)
@@ -302,7 +302,7 @@ def multiclass_convert_polydata_to_imagedata(poly, ref_im, thresh_dict={'array':
     while poly_i.GetNumberOfPoints() > 0:
         poly_im = convertPolyDataToImageData(poly_i, ref_im)
         poly_im_py = vtk_to_numpy(poly_im.GetPointData().GetScalars())
-        mask = (poly_im_py==1) & (out_im_py==0) if c==6 else poly_im_py==1
+        mask = (poly_im_py==1) & (out_im_py==0) if c in no_overwrite else poly_im_py==1
         out_im_py[mask] = c+1
         c+=1
         poly_i = thresholdPolyData(poly, thresh_dict['array'], (c, c), thresh_dict['mode'])
